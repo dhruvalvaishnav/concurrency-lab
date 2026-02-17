@@ -155,4 +155,79 @@ public class RaceConditionDemo {
     It guarantees visibility because the internal value field is declared volatile,
     which ensures that updates are immediately visible to other threads according to the Java Memory Model.
 
+ 🧠 What Happens When 100+ Threads Use AtomicInteger?
+    Remember how it works internally:
+     do {
+     oldValue = value;
+     newValue = oldValue + 1;
+     } while (!compareAndSet(oldValue, newValue));
+
+     This is called a: CAS retry loop (spin loop)
+     No locking.
+     But also… no waiting.
+
+     🔥 Under Low Contention (Few Threads)
+     Example: 2–4 threads
+     T1 succeeds CAS
+     T2 succeeds CAS
+     T3 succeeds CAS
+     Almost no retries → Very fast 🚀
+     This is why AtomicInteger beats synchronized most of the time.
+
+     💥 Under High Contention (100 Threads)
+     Now imagine:
+     All 100 threads read value = 500 at same time.
+     They all try:
+        CAS(500 → 501)
+        Only ONE thread wins.
+        99 threads FAIL.
+        Now all 99 retry again:
+        read → compute → CAS → fail → retry
+        read → compute → CAS → fail → retry
+        read → compute → CAS → fail → retry
+    This creates:  CPU spinning storm - The CPU spends time retrying instead of doing useful work.
+     📉 Result
+     Performance drops dramatically.
+     Sometimes worse than synchronized.
+
+    Because synchronized:
+         Blocks threads
+         OS parks them
+         CPU rests
+    AtomicInteger:
+         Keeps threads active
+         Burns CPU cycles
+
+ 🧠 This Problem Has a Name : "Contention collapse due to CAS retries"
+ Very famous in high-throughput systems.
+
+ 🚀 The Solution Java Introduced
+ Instead of: AtomicInteger
+ Java added: "LongAdder"
+ 🔥 Why LongAdder Is Faster Under Heavy Load
+
+ AtomicInteger:
+     1 shared memory location
+     → everyone fights for it
+ LongAdder:
+     Multiple counters (striped cells)
+     → threads update different cells
+     → values combined at read
+
+
+ So instead of 100 threads fighting:
+ They spread out.
+ Massive scalability improvement.
+
+ If asked: Why can AtomicInteger become slow under heavy contention?
+ You answer:  AtomicInteger uses a CAS retry loop.
+            Under high contention many threads repeatedly fail the CAS operation and retry, causing excessive CPU spinning.
+            This leads to performance degradation. LongAdder solves this by reducing contention using striped counters.
+
+ | Tool          | Strategy         | Best Case            |
+ | ------------- | ---------------- | -------------------- |
+ | synchronized  | Blocking         | High contention      |
+ | AtomicInteger | CAS spinning     | Low contention       |
+ | LongAdder     | Striped counters | Very high contention |
+
  */
