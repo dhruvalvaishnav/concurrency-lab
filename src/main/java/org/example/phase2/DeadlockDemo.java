@@ -1,4 +1,4 @@
-package org.example.phase1;
+package org.example.phase2;
 
 public class DeadlockDemo {
 

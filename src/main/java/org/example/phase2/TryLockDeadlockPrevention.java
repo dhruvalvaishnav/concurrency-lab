@@ -1,6 +1,5 @@
-package org.example.phase1;
+package org.example.phase2;
 
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -70,6 +69,8 @@ public class TryLockDeadlockPrevention {
 
     public static void transfer(Account from, Account to, int amount) {
 
+        /*
+        // tryLock + retry loop ⇒ starvation possible EVEN with fair lock
         while (true) {
 
             boolean fromLock = false;
@@ -103,6 +104,54 @@ public class TryLockDeadlockPrevention {
             sleep(10);
             System.out.println("retrying...");
         }
+        */
+
+
+        // Correct approach — ordered blocking ✔ Deterministic lock ordering (industry solution)
+        // Determine lock order based on object identity (or unique ID)
+        // Ensures consistent ordering → prevents deadlock
+        ReentrantLock firstLock = from.getName().compareTo(to.getName()) < 0 ? from.getLock() : to.getLock();
+        ReentrantLock secondLock = from.getName().compareTo(to.getName()) < 0 ? to.getLock() : from.getLock();
+
+        // Acquire first lock
+        firstLock.lock();
+        try {
+            // Acquire second lock
+            secondLock.lock();
+            try {
+                // Critical section — safe to modify balances
+                if (from.withdraw(amount)) {
+                    to.deposit(amount);
+                    System.out.println(Thread.currentThread().getName()
+                            + " transferred " + amount + " from "
+                            + from.getName() + " to " + to.getName());
+                } else {
+                    System.out.println(Thread.currentThread().getName()
+                            + " failed to transfer " + amount + " from "
+                            + from.getName() + " to " + to.getName()
+                            + " (insufficient funds)");
+                }
+            } finally {
+                secondLock.unlock();  // release second lock
+            }
+        } finally {
+            firstLock.unlock();  // release first lock
+        }
+
+        /*
+        🔑 Why This Is Safe
+
+        Lock ordering prevents deadlock:
+        All threads lock accounts in same order (from.getName() < to.getName()), so circular wait is impossible.
+
+        No busy-wait / retry loop: Threads block naturally on locks if not available → no CPU spin → no starvation from retrying too fast.
+
+        Thread-safe updates: Both withdrawal and deposit happen inside two locks, guaranteeing atomicity.
+
+        This is how banks or payment systems handle transfers safely.
+        Avoids pitfalls of tryLock() loops with starvation.
+        Uses ReentrantLock with consistent ordering, same idea as global lock ordering in deadlock prevention.
+         */
     }
 
     public static void main(String[] args) {
@@ -164,6 +213,12 @@ public class TryLockDeadlockPrevention {
             | tryLock()            | deadlock safe          | distributed systems        |
             | tryLock(timeout)     | production safe        | databases, Kafka consumers |
 
+            There are 3 deadlock prevention strategies:
+            | Strategy                  | Used in             |
+            | ------------------------- | ------------------- |
+            | Lock ordering             | DB engines, JVM     |
+            | Timeout retry (`tryLock`) | distributed systems |
+            | Deadlock detection        | OS kernels          |
 
      */
 }
