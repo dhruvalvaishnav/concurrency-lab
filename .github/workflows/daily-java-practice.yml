@@ -1,0 +1,131 @@
+name: Daily Java Learning Skeleton
+
+on:
+  schedule:
+    - cron: '0 3 * * 1-6'  # Mon-Sat at 8:30 AM IST (3:00 AM UTC)
+  workflow_dispatch:
+
+jobs:
+  generate-skeleton:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Generate today's learning skeleton
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'EOF'
+          import anthropic
+          import os
+          import json
+          from datetime import datetime
+
+          BASE_PATH = "src/main/java/org/example"
+
+          TOPICS = {
+            0: {
+              "phase": "phase5",
+              "package": "org.example.phase5",
+              "label": "Virtual Threads & Modern Concurrency",
+              "concepts": [
+                ("VirtualThreadBenchmark", "Compare virtual threads vs platform threads."),
+                ("StructuredConcurrencyDemo", "StructuredTaskScope demo."),
+                ("VirtualThreadPitfalls", "Pinning problem demo."),
+              ]
+            }
+          }
+
+          client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+          day = datetime.now().weekday()
+          topic = TOPICS.get(day, TOPICS[0])
+
+          week_num = datetime.now().isocalendar()[1]
+          concept_index = week_num % len(topic["concepts"])
+          class_name, description = topic["concepts"][concept_index]
+
+          phase = topic["phase"]
+          package = topic["package"]
+          folder = f"{BASE_PATH}/{phase}"
+
+          prompt = f"Generate Java class {class_name} in package {package}"
+
+          message = client.messages.create(
+              model="claude-3-5-sonnet-20241022",
+              max_tokens=2000,
+              messages=[{"role": "user", "content": prompt}]
+          )
+
+          response_text = message.content[0].text
+
+          os.makedirs(folder, exist_ok=True)
+          filepath = f"{folder}/{class_name}.java"
+
+          with open(filepath, "w") as f:
+              f.write(response_text)
+
+          print(f"Written: {filepath}")
+
+          date_str = datetime.now().strftime("%Y-%m-%d")
+          day_name = datetime.now().strftime("%A")
+
+          log_entry = f"\n## {date_str} ({day_name}) — {class_name}.java\n"
+
+          log_path = "DAILY_LOG.md"
+          existing = ""
+
+          if os.path.exists(log_path):
+              with open(log_path, "r") as f:
+                  existing = f.read()
+
+          if "# Daily Learning Log" not in existing:
+              existing = "# Daily Learning Log\n\n---\n" + existing
+
+          with open(log_path, "w") as f:
+              f.write(existing + log_entry)
+
+          metadata = {
+              "filepath": filepath,
+              "class_name": class_name,
+              "phase": phase,
+              "package": package,
+              "date": date_str,
+              "day": day_name
+          }
+
+          with open("/tmp/skeleton_meta.json", "w") as f:
+              json.dump(metadata, f)
+
+          EOF
+
+      - name: Commit skeleton
+        run: |
+          META=$(cat /tmp/skeleton_meta.json)
+
+          CLASS=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['class_name'])")
+          PHASE=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['phase'])")
+          FILEPATH=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['filepath'])")
+          DATE=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['date'])")
+
+          git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
+          git config --local user.name "Dhruval Vaishnav"
+
+          git add "$FILEPATH" DAILY_LOG.md
+          git commit -m "chore($PHASE): add $CLASS skeleton [$DATE]" || echo "Nothing to commit"
+          git push
