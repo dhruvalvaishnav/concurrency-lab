@@ -1,12 +1,15 @@
-name: Daily Java Learning Skeleton
+name: Daily Java Interview Engine
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
   schedule:
-    - cron: '0 3 * * 1-6'  # Mon-Sat at 8:30 AM IST (3:00 AM UTC)
+    - cron: '0 3 * * 1,3,4'  # Mon, Wed, Thu (8:30 AM IST)
   workflow_dispatch:
 
 jobs:
-  generate-skeleton:
+  generate-java-skeleton:
     runs-on: ubuntu-latest
 
     permissions:
@@ -14,118 +17,213 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install anthropic
+        run: pip install openai
 
-      - name: Generate today's learning skeleton
+      - name: Generate Java Interview Files
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.KAFKA_API_KEY }}
         run: |
           python3 << 'EOF'
-          import anthropic
           import os
           import json
+          import glob
           from datetime import datetime
+          from collections import Counter
+          from openai import OpenAI
 
-          BASE_PATH = "src/main/java/org/example"
+          BASE_PATH = "src/main/java/org/example/java"
 
           TOPICS = {
-            0: {
-              "phase": "phase5",
-              "package": "org.example.phase5",
-              "label": "Virtual Threads & Modern Concurrency",
+            "phase1": {
+              "package": "org.example.java.phase1",
+              "label": "Core Java + Collections",
               "concepts": [
-                ("VirtualThreadBenchmark", "Compare virtual threads vs platform threads."),
-                ("StructuredConcurrencyDemo", "StructuredTaskScope demo."),
-                ("VirtualThreadPitfalls", "Pinning problem demo."),
+                ("CustomHashMap", "Implement HashMap with collision handling"),
+                ("LRUCache", "LRU cache using LinkedHashMap / DLL"),
+                ("ThreadSafeSingleton", "Double checked locking"),
+                ("ImmutableClassDesign", "Design immutable objects"),
+                ("ComparatorVsComparable", "Sorting strategies"),
+              ]
+            },
+            "phase2": {
+              "package": "org.example.java.phase2",
+              "label": "Concurrency + Multithreading",
+              "concepts": [
+                ("ThreadPoolCustom", "Custom ThreadPoolExecutor"),
+                ("ProducerConsumerBlockingQueue", "Producer-consumer pattern"),
+                ("DeadlockPrevention", "Avoid deadlocks"),
+                ("CompletableFuturePipeline", "Async workflows"),
+                ("VirtualThreadsDemo", "Modern Java concurrency"),
+              ]
+            },
+            "phase3": {
+              "package": "org.example.java.phase3",
+              "label": "System Design Patterns",
+              "concepts": [
+                ("RateLimiterTokenBucket", "Token bucket algorithm"),
+                ("CircuitBreakerPattern", "Resilience pattern"),
+                ("EventDrivenArchitecture", "Pub-sub design"),
+                ("CacheAsidePattern", "Caching strategy"),
+                ("IdempotencyHandler", "Duplicate request handling"),
               ]
             }
           }
 
-          client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+          if not os.getenv("GROQ_API_KEY"):
+              print("No API key — exiting")
+              exit(0)
 
-          day = datetime.now().weekday()
-          topic = TOPICS.get(day, TOPICS[0])
-
-          week_num = datetime.now().isocalendar()[1]
-          concept_index = week_num % len(topic["concepts"])
-          class_name, description = topic["concepts"][concept_index]
-
-          phase = topic["phase"]
-          package = topic["package"]
-          folder = f"{BASE_PATH}/{phase}"
-
-          prompt = f"Generate Java class {class_name} in package {package}"
-
-          message = client.messages.create(
-              model="claude-3-5-sonnet-20241022",
-              max_tokens=2000,
-              messages=[{"role": "user", "content": prompt}]
+          client = OpenAI(
+              api_key=os.environ["GROQ_API_KEY"],
+              base_url="https://api.groq.com/openai/v1"
           )
 
-          response_text = message.content[0].text
-
-          os.makedirs(folder, exist_ok=True)
-          filepath = f"{folder}/{class_name}.java"
-
-          with open(filepath, "w") as f:
-              f.write(response_text)
-
-          print(f"Written: {filepath}")
-
           date_str = datetime.now().strftime("%Y-%m-%d")
-          day_name = datetime.now().strftime("%A")
+          date_compact = datetime.now().strftime("%Y%m%d")
 
-          log_entry = f"\n## {date_str} ({day_name}) — {class_name}.java\n"
+          # Load completed topics
+          completed_file = "completed_topics.json"
+          if os.path.exists(completed_file):
+              with open(completed_file) as f:
+                  completed = set(json.load(f))
+          else:
+              completed = set()
 
-          log_path = "DAILY_LOG.md"
-          existing = ""
+          # Difficulty scaling
+          levels = ["L1", "L2", "L3"]
+          level = levels[len(completed) % 3]
 
-          if os.path.exists(log_path):
-              with open(log_path, "r") as f:
-                  existing = f.read()
+          log_entries = []
 
-          if "# Daily Learning Log" not in existing:
-              existing = "# Daily Learning Log\n\n---\n" + existing
+          for phase, data in TOPICS.items():
+              package = data["package"]
+              folder = f"{BASE_PATH}/{phase}"
+              os.makedirs(folder, exist_ok=True)
 
-          with open(log_path, "w") as f:
-              f.write(existing + log_entry)
+              new_concepts = [c for c in data["concepts"] if c[0] not in completed]
 
-          metadata = {
-              "filepath": filepath,
-              "class_name": class_name,
-              "phase": phase,
-              "package": package,
-              "date": date_str,
-              "day": day_name
-          }
+              for class_name, description in new_concepts[:5]:
+                  class_unique = f"{class_name}_{date_compact}"
+                  filename = f"{class_unique}.java"
+                  filepath = f"{folder}/{filename}"
 
-          with open("/tmp/skeleton_meta.json", "w") as f:
-              json.dump(metadata, f)
+                  print(f"Generating: {filename} [{level}]")
 
-          EOF
+                  prompt = f"""
+          You are a STAFF-LEVEL Java backend engineer.
+          
+          Generate INTERVIEW-KILLER Java code.
+          
+          Class: {class_unique}
+          Difficulty: {level}
+          Topic: {description}
+          Package: {package}
+          
+          INCLUDE:
+            1. File header (date, topic, difficulty)
+            2. Architecture / Flow
+            3. Implementation
+            4. Edge cases
+            5. Complexity
+            6. Failure scenarios
+            7. Trade-offs
+            8. 3 hard interview questions
+            9. Hidden answers
+            
+            Return ONLY Java code.
+          """
 
-      - name: Commit skeleton
-        run: |
-          META=$(cat /tmp/skeleton_meta.json)
+                  try:
+                      response = client.chat.completions.create(
+                          model="llama3-70b-8192",
+                          messages=[{"role": "user", "content": prompt}],
+                          temperature=0.2,
+                          max_tokens=2500
+                      )
+                      code = response.choices[0].message.content
+                  except Exception as e:
+                    print("API failed:", e)
+                    code = f"// fallback\npublic class {class_unique} {{}}"
 
-          CLASS=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['class_name'])")
-          PHASE=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['phase'])")
-          FILEPATH=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['filepath'])")
-          DATE=$(echo $META | python3 -c "import sys,json; print(json.load(sys.stdin)['date'])")
+                  with open(filepath, "w") as f:
+                    f.write(code)
 
-          git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
-          git config --local user.name "Dhruval Vaishnav"
+                  completed.add(class_name)
+                    
+                  log_entries.append(
+                      f"## {date_str} — {filename} [{level}]\n- Topic: {description}\n"
+                  )
 
-          git add "$FILEPATH" DAILY_LOG.md
-          git commit -m "chore($PHASE): add $CLASS skeleton [$DATE]" || echo "Nothing to commit"
-          git push
+          # Save completed topics
+          with open(completed_file, "w") as f:
+              json.dump(list(completed), f)
+
+          # Update DAILY LOG
+          with open("DAILY_LOG.md", "a") as f:
+              f.write("\n".join(log_entries) + "\n")
+          
+          # Generate README dashboard
+          all_files = glob.glob(f"{BASE_PATH}/**/*.java", recursive=True)
+          total = len(all_files)
+  
+          levels_count = Counter(
+            ["L1" if "_L1" in f else "L2" if "_L2" in f else "L3" for f in all_files]
+          )
+  
+          readme = f"""# 🚀 Java Interview Dashboard
+
+          ## Stats
+          - Total Files: {total}
+          - L1: {levels_count.get('L1',0)}
+          - L2: {levels_count.get('L2',0)}
+          - L3: {levels_count.get('L3',0)}
+
+          ## Goal
+          Crack Senior Backend Interviews (Java + Kafka + System Design)
+          """
+
+          with open("README.md", "w") as f:
+             f.write(readme)
+    
+          # Mock interview
+             interview_prompt = "Generate 10 backend interview questions with hints."
+             
+             response = client.chat.completions.create(
+               model="llama3-70b-8192",
+               messages=[{"role": "user", "content": interview_prompt}],
+               temperature=0.3,
+               max_tokens=1200
+             )
+
+             with open("MOCK_INTERVIEW.md", "w") as f:
+               f.write(response.choices[0].message.content)
+
+             # Save metadata
+             with open("/tmp/meta.json", "w") as f:
+               json.dump({"date": date_str}, f)
+
+             EOF
+
+           - name: Commit changes
+             run: |
+               git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
+               git config --local user.name "Dhruval Vaishnav"
+               
+               git add .
+               
+               if git diff --cached --quiet; then
+                 echo "No changes"
+               else
+                 git commit -m "feat: daily java interview prep"
+                 git push
+               fi
