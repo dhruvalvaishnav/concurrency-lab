@@ -29,201 +29,29 @@ jobs:
       - name: Install dependencies
         run: pip install openai
 
-      - name: Generate Java Interview Files
+      - name: Run generator (rate-safe)
         env:
           GROQ_API_KEY: ${{ secrets.KAFKA_API_KEY }}
+        run: python scripts/generate.py
+
+      - name: Commit generated files
         run: |
-          python3 << 'EOF'
-          import os
-          import json
-          import glob
-          from datetime import datetime
-          from collections import Counter
-          from openai import OpenAI
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
 
-          BASE_PATH = "src/main/java/org/example/java"
+          git add .
 
-          TOPICS = {
-            "phase1": {
-              "package": "org.example.java.phase1",
-              "label": "Core Java + Collections",
-              "concepts": [
-                ("CustomHashMap", "Implement HashMap with collision handling"),
-                ("LRUCache", "LRU cache using LinkedHashMap / DLL"),
-                ("ThreadSafeSingleton", "Double checked locking"),
-                ("ImmutableClassDesign", "Design immutable objects"),
-                ("ComparatorVsComparable", "Sorting strategies"),
-              ]
-            },
-            "phase2": {
-              "package": "org.example.java.phase2",
-              "label": "Concurrency + Multithreading",
-              "concepts": [
-                ("ThreadPoolCustom", "Custom ThreadPoolExecutor"),
-                ("ProducerConsumerBlockingQueue", "Producer-consumer pattern"),
-                ("DeadlockPrevention", "Avoid deadlocks"),
-                ("CompletableFuturePipeline", "Async workflows"),
-                ("VirtualThreadsDemo", "Modern Java concurrency"),
-              ]
-            },
-            "phase3": {
-              "package": "org.example.java.phase3",
-              "label": "System Design Patterns",
-              "concepts": [
-                ("RateLimiterTokenBucket", "Token bucket algorithm"),
-                ("CircuitBreakerPattern", "Resilience pattern"),
-                ("EventDrivenArchitecture", "Pub-sub design"),
-                ("CacheAsidePattern", "Caching strategy"),
-                ("IdempotencyHandler", "Duplicate request handling"),
-              ]
-            }
-          }
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
 
-          if not os.getenv("GROQ_API_KEY"):
-              print("No API key — exiting")
-              exit(0)
+          git commit -m "chore: daily java interview generation"
 
-          client = OpenAI(
-              api_key=os.environ["GROQ_API_KEY"],
-              base_url="https://api.groq.com/openai/v1"
-          )
-
-          date_str = datetime.now().strftime("%Y-%m-%d")
-          date_compact = datetime.now().strftime("%Y%m%d")
-
-          # Load completed topics
-          completed_file = "completed_topics.json"
-          if os.path.exists(completed_file):
-              with open(completed_file) as f:
-                  completed = set(json.load(f))
-          else:
-              completed = set()
-
-          # Difficulty scaling
-          levels = ["L1", "L2", "L3"]
-          level = levels[len(completed) % 3]
-
-          log_entries = []
-
-          for phase, data in TOPICS.items():
-              package = data["package"]
-              folder = f"{BASE_PATH}/{phase}"
-              os.makedirs(folder, exist_ok=True)
-
-              new_concepts = [c for c in data["concepts"] if c[0] not in completed]
-
-              for class_name, description in new_concepts[:5]:
-                  class_unique = f"{class_name}_{date_compact}"
-                  filename = f"{class_unique}.java"
-                  filepath = f"{folder}/{filename}"
-
-                  print(f"Generating: {filename} [{level}]")
-
-                  prompt = f"""
-          You are a STAFF-LEVEL Java backend engineer.
-          
-          Generate INTERVIEW-KILLER Java code.
-          
-          Class: {class_unique}
-          Difficulty: {level}
-          Topic: {description}
-          Package: {package}
-          
-          INCLUDE:
-            1. File header (date, topic, difficulty)
-            2. Architecture / Flow
-            3. Implementation
-            4. Edge cases
-            5. Complexity
-            6. Failure scenarios
-            7. Trade-offs
-            8. 3 hard interview questions
-            9. Hidden answers
-            
-            Return ONLY Java code.
-          """
-
-                  try:
-                      response = client.chat.completions.create(
-                          model="openai/gpt-oss-20b",
-                          messages=[{"role": "user", "content": prompt}],
-                          temperature=0.2,
-                          max_tokens=2500
-                      )
-                      code = response.choices[0].message.content
-                  except Exception as e:
-                    print("API failed:", e)
-                    code = f"// fallback\npublic class {class_unique} {{}}"
-
-                  with open(filepath, "w") as f:
-                    f.write(code)
-
-                  completed.add(class_name)
-                    
-                  log_entries.append(
-                      f"## {date_str} — {filename} [{level}]\n- Topic: {description}\n"
-                  )
-
-          # Save completed topics
-          with open(completed_file, "w") as f:
-              json.dump(list(completed), f)
-
-          # Update DAILY LOG
-          with open("DAILY_LOG.md", "a") as f:
-              f.write("\n".join(log_entries) + "\n")
-          
-          # Generate README dashboard
-          all_files = glob.glob(f"{BASE_PATH}/**/*.java", recursive=True)
-          total = len(all_files)
-  
-          levels_count = Counter(
-            ["L1" if "_L1" in f else "L2" if "_L2" in f else "L3" for f in all_files]
-          )
-  
-          readme = f"""# 🚀 Java Interview Dashboard
-
-          ## Stats
-          - Total Files: {total}
-          - L1: {levels_count.get('L1',0)}
-          - L2: {levels_count.get('L2',0)}
-          - L3: {levels_count.get('L3',0)}
-
-          ## Goal
-          Crack Senior Backend Interviews (Java + Kafka + System Design)
-          """
-
-          with open("README.md", "w") as f:
-             f.write(readme)
-    
-          # Mock interview
-          interview_prompt = "Generate 10 backend interview questions with hints."
-           
-          response = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
-            messages=[{"role": "user", "content": interview_prompt}],
-            temperature=0.3,
-            max_tokens=1200
-          )
-
-          with open("MOCK_INTERVIEW.md", "w") as f:
-            f.write(response.choices[0].message.content)
-
-          # Save metadata
-          with open("/tmp/meta.json", "w") as f:
-            json.dump({"date": date_str}, f)
-
-          EOF
-
-          - name: Commit changes
-             run: |
-               git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
-              git config --local user.name "Dhruval Vaishnav"
-             
-              git add .
-             
-              if git diff --cached --quiet; then
-                 echo "No changes"
-              else
-                 git commit -m "feat: daily java interview prep"
-                 git push
-              fi
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: daily java interview generation"
+          branch: auto/java-daily
+          title: "Daily Java Interview Engine Output"
+          body: "Automated Java skeleton generation."
