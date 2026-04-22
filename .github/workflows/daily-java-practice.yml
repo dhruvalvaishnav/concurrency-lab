@@ -196,34 +196,34 @@ jobs:
              f.write(readme)
     
           # Mock interview
-             interview_prompt = "Generate 10 backend interview questions with hints."
+          interview_prompt = "Generate 10 backend interview questions with hints."
+           
+          response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[{"role": "user", "content": interview_prompt}],
+            temperature=0.3,
+            max_tokens=1200
+          )
+
+          with open("MOCK_INTERVIEW.md", "w") as f:
+            f.write(response.choices[0].message.content)
+
+          # Save metadata
+          with open("/tmp/meta.json", "w") as f:
+            json.dump({"date": date_str}, f)
+
+          EOF
+
+          - name: Commit changes
+             run: |
+               git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
+              git config --local user.name "Dhruval Vaishnav"
              
-             response = client.chat.completions.create(
-               model="llama3-70b-8192",
-               messages=[{"role": "user", "content": interview_prompt}],
-               temperature=0.3,
-               max_tokens=1200
-             )
-
-             with open("MOCK_INTERVIEW.md", "w") as f:
-               f.write(response.choices[0].message.content)
-
-             # Save metadata
-             with open("/tmp/meta.json", "w") as f:
-               json.dump({"date": date_str}, f)
-
-             EOF
-
-         - name: Commit changes
-           run: |
-             git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
-             git config --local user.name "Dhruval Vaishnav"
+              git add .
              
-             git add .
-             
-             if git diff --cached --quiet; then
-               echo "No changes"
-             else
-               git commit -m "feat: daily java interview prep"
-               git push
-             fi
+              if git diff --cached --quiet; then
+                 echo "No changes"
+              else
+                 git commit -m "feat: daily java interview prep"
+                 git push
+              fi
