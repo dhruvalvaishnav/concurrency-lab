@@ -35,24 +35,21 @@ jobs:
           GROQ_API_KEY: ${{ secrets.KAFKA_API_KEY }}
         run: python scripts/generate.py
 
-#      - name: Commit generated files
-#        run: |
-#          git config --global user.name "github-actions"
-#          git config --global user.email "actions@github.com"
-#
-#          git add .
-#
-#          if git diff --cached --quiet; then
-#            echo "No changes to commit"
-#            exit 0
-#          fi
-#
-#          git commit -m "chore: daily java interview generation"
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          commit-message: "chore: daily java interview generation"
-          branch: auto/java-daily
-          title: "Daily Java Interview Engine Output"
-          body: "Automated Java skeleton generation."
+      - name: Commit & Push to new branch
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "github-actions"
+          
+          BRANCH="auto/java-daily"
+          
+          git checkout -B $BRANCH
+          
+          git add .
+          
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          
+          git commit -m "chore: daily java interview generation"
+          git push origin $BRANCH --force
