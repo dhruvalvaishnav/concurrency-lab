@@ -214,16 +214,16 @@ jobs:
 
              EOF
 
-           - name: Commit changes
-             run: |
-               git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
-               git config --local user.name "Dhruval Vaishnav"
-               
-               git add .
-               
-               if git diff --cached --quiet; then
-                 echo "No changes"
-               else
-                 git commit -m "feat: daily java interview prep"
-                 git push
-               fi
+         - name: Commit changes
+           run: |
+             git config --local user.email "dhruvalvaishnav@users.noreply.github.com"
+             git config --local user.name "Dhruval Vaishnav"
+             
+             git add .
+             
+             if git diff --cached --quiet; then
+               echo "No changes"
+             else
+               git commit -m "feat: daily java interview prep"
+               git push
+             fi
