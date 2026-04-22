@@ -51,5 +51,5 @@ jobs:
             exit 0
           fi
           
-          git commit -m "chore: daily java interview generation"
+          git commit -m "chore: daily java interview generation - $(date +'%Y-%m-%d')"
           git push origin $BRANCH --force
